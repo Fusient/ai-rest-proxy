@@ -1,6 +1,5 @@
 package com.ijson.rest.proxy;
 
-
 import com.google.common.collect.Lists;
 import com.google.common.collect.Maps;
 import com.ijson.rest.proxy.codec.AbstractRestCodeC;
@@ -19,6 +18,7 @@ import org.apache.http.impl.client.HttpClientBuilder;
 import org.apache.http.impl.conn.PoolingHttpClientConnectionManager;
 import org.apache.http.util.EntityUtils;
 
+import java.io.Closeable;
 import java.io.IOException;
 import java.util.List;
 import java.util.Map;
@@ -27,8 +27,7 @@ import java.util.Map;
  * Created by cuiyongxu on 26/12/2016.
  */
 @Slf4j
-public class RestClient {
-
+public class RestClient implements Closeable {
 
     protected static final int DEFAULT_MAX_CONNECTION = 512;
     protected static final int DEFAULT_MAX_PER_ROUTE_CONNECTION = 50;
@@ -64,7 +63,8 @@ public class RestClient {
 
     public void createHttpClientForService(ServiceConfig serviceConfig) {
         String serviceKey = serviceConfig.getServiceKey();
-        log.info("create http client:{},\t{},\t{}",serviceConfig.getServiceName(),serviceKey,serviceConfig.getAddress());
+        log.info("create http client:{},\t{},\t{}", serviceConfig.getServiceName(), serviceKey,
+                serviceConfig.getAddress());
         PoolingHttpClientConnectionManager connectionManager = new PoolingHttpClientConnectionManager();
         connectionManager.setMaxTotal(50);
         connectionManager.setDefaultMaxPerRoute(50);
@@ -98,22 +98,22 @@ public class RestClient {
     }
 
     public <R> R invoke(String serviceName, InvokeParams invokeParams, AbstractRestCodeC codeC) throws IOException {
-        DefaultRestResponseHandler<R> handler = new DefaultRestResponseHandler<>(invokeParams.getServiceUrl(), invokeParams.getResultClazz(), codeC);
+        DefaultRestResponseHandler<R> handler = new DefaultRestResponseHandler<>(invokeParams.getServiceUrl(),
+                invokeParams.getResultClazz(), codeC);
 
-            CloseableHttpClient serviceClient = httpClientMap.get(serviceName);
-            if (serviceClient == null) {
-                serviceClient = defaultHttpClient;
+        CloseableHttpClient serviceClient = httpClientMap.get(serviceName);
+        if (serviceClient == null) {
+            serviceClient = defaultHttpClient;
+        }
+        RequestBuilder requestBuilder = HTTPRequestBuilderFactory.create(invokeParams, codeC);
+        try (CloseableHttpResponse response = serviceClient.execute(requestBuilder.build())) {
+            R rst = handler.handleResponse(response);
+            if (rst == null) {
+                throw new RestProxyInvokeException("返回结果为空");
             }
-            RequestBuilder requestBuilder = HTTPRequestBuilderFactory.create(invokeParams, codeC);
-            try (CloseableHttpResponse response = serviceClient.execute(requestBuilder.build())) {
-                R rst = handler.handleResponse(response);
-                if (rst == null) {
-                    throw new RestProxyInvokeException("返回结果为空");
-                }
-                return rst;
-            }
+            return rst;
+        }
     }
-
 
     public static final class DefaultRestResponseHandler<T> implements ResponseHandler<T> {
 
@@ -143,7 +143,43 @@ public class RestClient {
             }
             HttpEntity in = response.getEntity();
             return codeC.decodeResult(statusCode, headers, in != null ? EntityUtils.toByteArray(in) : null, clazz);
+        }
     }
-}
+
+    /**
+     * 关闭所有HTTP客户端连接
+     */
+    @Override
+    public void close() throws IOException {
+        log.info("正在关闭RestClient资源...");
+
+        // 关闭默认HTTP客户端
+        if (defaultHttpClient != null) {
+            try {
+                defaultHttpClient.close();
+                log.debug("默认HTTP客户端已关闭");
+            } catch (IOException e) {
+                log.error("关闭默认HTTP客户端失败", e);
+            }
+        }
+
+        // 关闭所有服务专用HTTP客户端
+        for (Map.Entry<String, CloseableHttpClient> entry : httpClientMap.entrySet()) {
+            String serviceKey = entry.getKey();
+            CloseableHttpClient client = entry.getValue();
+            if (client != null) {
+                try {
+                    client.close();
+                    log.debug("服务[{}]的HTTP客户端已关闭", serviceKey);
+                } catch (IOException e) {
+                    log.error("关闭服务[{}]的HTTP客户端失败", serviceKey, e);
+                }
+            }
+        }
+
+        // 清空映射
+        httpClientMap.clear();
+        log.info("RestClient资源关闭完成");
+    }
 
 }

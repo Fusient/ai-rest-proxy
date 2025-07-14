@@ -2,13 +2,14 @@
 package com.ijson.rest.proxy.example.model;
 
 import lombok.Data;
-
+import lombok.EqualsAndHashCode;
 
 /**
  * Created by cuiyongxu on 17/7/15.
  */
 public interface GetIP {
     @Data
+    @EqualsAndHashCode(callSuper = false)
     class Result extends BaseResult {
         private IPInfoEntity data;
     }

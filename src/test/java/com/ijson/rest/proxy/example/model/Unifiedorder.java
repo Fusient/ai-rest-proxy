@@ -4,6 +4,7 @@ import com.ijson.rest.proxy.annotation.CDATA;
 import com.ijson.rest.proxy.annotation.INField;
 import com.thoughtworks.xstream.annotations.XStreamAlias;
 import lombok.Data;
+import lombok.EqualsAndHashCode;
 
 /**
  * Created by cuiyongxu on 17/7/16.
@@ -11,15 +12,16 @@ import lombok.Data;
 public interface Unifiedorder {
 
     @Data
-    class BaseArg{
+    class BaseArg {
         @INField(name = "appid", required = true)
         private String appid;
         private String mch_id;
     }
 
     @Data
+    @EqualsAndHashCode(callSuper = false)
     @XStreamAlias("xml")
-    class Arg extends BaseArg{
+    class Arg extends BaseArg {
         private String device_info;
         private String nonce_str;
         private String sign;
@@ -32,7 +34,7 @@ public interface Unifiedorder {
         private String fee_type;
         private Integer total_fee;
         @CDATA
-        @INField(name = "spbill_create_ip",required = true)
+        @INField(name = "spbill_create_ip", required = true)
         private String spbill_create_ip;
         private String time_start;
         private String time_expire;
@@ -55,6 +57,7 @@ public interface Unifiedorder {
     }
 
     @Data
+    @EqualsAndHashCode(callSuper = false)
     @XStreamAlias("xml")
     class Result extends BaseResult {
         private String appid;

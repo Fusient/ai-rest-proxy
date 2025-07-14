@@ -12,22 +12,23 @@ import com.ijson.rest.proxy.util.JsonUtil;
 import lombok.Data;
 import lombok.extern.slf4j.Slf4j;
 
+import java.io.Closeable;
+import java.io.IOException;
 import java.lang.invoke.MethodHandle;
 import java.lang.invoke.MethodHandles;
 import java.lang.reflect.Constructor;
 import java.lang.reflect.Method;
-import java.util.HashMap;
 import java.util.Map;
-
+import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * Created by cuiyongxu on 26/12/2016.
  */
 @Slf4j
 @Data
-public class RestServiceProxyFactory {
+public class RestServiceProxyFactory implements Closeable {
 
-    private Map<String, AbstractRestCodeC> serviceCodeMaps = new HashMap<>();
+    private Map<String, AbstractRestCodeC> serviceCodeMaps = new ConcurrentHashMap<>();
     private final static RestClient REST_CLIENT = new RestClient();
 
     private ServiceConfigManager configManager;
@@ -39,18 +40,18 @@ public class RestServiceProxyFactory {
     }
 
     public void init() {
-        configManager = new ServiceConfigManager(configName, (serviceConfigMaps) -> serviceConfigMaps.forEach((key, value) -> {
-            REST_CLIENT.createHttpClientForService(value);
-        }));
+        configManager = new ServiceConfigManager(configName,
+                (serviceConfigMaps) -> serviceConfigMaps.forEach((key, value) -> {
+                    REST_CLIENT.createHttpClientForService(value);
+                }));
     }
-
 
     public <T> T newRestServiceProxy(Class<T> clazz) {
         return Reflection.newProxy(clazz, (Object proxy, Method method, Object[] args) -> {
-//            if (method.isDefault()) {
-//                MethodHandle methodHandler = getMethodHandler(method);
-//                return methodHandler.bindTo(proxy).invokeWithArguments(args);
-//            }
+            // if (method.isDefault()) {
+            // MethodHandle methodHandler = getMethodHandler(method);
+            // return methodHandler.bindTo(proxy).invokeWithArguments(args);
+            // }
             RestResource restResource = method.getDeclaringClass().getAnnotation(RestResource.class);
             String serviceKey = restResource.value();
             InvokeParams invokeParams = InvokeParams.getInstance(serviceKey, method, args);
@@ -86,14 +87,16 @@ public class RestServiceProxyFactory {
     Map<String, MethodHandle> methodHandlers = Maps.newConcurrentMap();
 
     private MethodHandle getMethodHandler(Method method)
-            throws NoSuchMethodException, IllegalAccessException, InstantiationException, java.lang.reflect.InvocationTargetException {
+            throws NoSuchMethodException, IllegalAccessException, InstantiationException,
+            java.lang.reflect.InvocationTargetException {
 
         Constructor<MethodHandles.Lookup> constructor = MethodHandles.Lookup.class
                 .getDeclaredConstructor(Class.class, int.class);
         constructor.setAccessible(true);
 
         Class<?> declaringClass = method.getDeclaringClass();
-        int allModes = (MethodHandles.Lookup.PUBLIC | MethodHandles.Lookup.PRIVATE | MethodHandles.Lookup.PROTECTED | MethodHandles.Lookup.PACKAGE);
+        int allModes = (MethodHandles.Lookup.PUBLIC | MethodHandles.Lookup.PRIVATE | MethodHandles.Lookup.PROTECTED
+                | MethodHandles.Lookup.PACKAGE);
         return constructor.newInstance(declaringClass, allModes)
                 .unreflectSpecial(method, declaringClass);
     }
@@ -112,5 +115,24 @@ public class RestServiceProxyFactory {
         });
     }
 
+    /**
+     * 关闭工厂和相关资源
+     */
+    @Override
+    public void close() throws IOException {
+        log.info("正在关闭RestServiceProxyFactory资源...");
+
+        // 关闭REST客户端
+        try {
+            REST_CLIENT.close();
+            log.debug("REST客户端已关闭");
+        } catch (IOException e) {
+            log.error("关闭REST客户端失败", e);
+        }
+
+        // 清空编解码器缓存
+        serviceCodeMaps.clear();
+        log.info("RestServiceProxyFactory资源关闭完成");
+    }
 
 }

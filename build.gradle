@@ -2,9 +2,10 @@ plugins {
     id 'java-library'
     id 'maven-publish'
     id 'signing'
+    id 'jacoco'
 }
 
-group = 'com.ijson'
+group = 'com.ijson.ai'
 archivesBaseName = 'ai-rest-proxy'
 version = '1.0.0-SNAPSHOT'
 
@@ -31,7 +32,7 @@ ext {
     commonsIoVersion = '2.11.0'
     commonsCollectionsVersion = '3.2.2'
     httpclientVersion = '4.5.13'
-    xstreamVersion = '1.4.19'
+    xstreamVersion = '1.4.20'
     junitVersion = '4.13.2'
     fastjsonVersion = '1.2.83'
 }
@@ -99,9 +100,9 @@ test {
     enabled = false
 }
 
-// 暂时禁用测试编译，直到Lombok问题解决
+// 重新启用测试编译
 compileTestJava {
-    enabled = false
+    enabled = true
 }
 
 // JAR配置
@@ -200,4 +201,41 @@ task release {
     group = 'publishing'
     description = 'Publishes the project to Maven Central'
     dependsOn 'publishMavenPublicationToOSSRHRepository'
+}
+
+// JaCoCo配置
+jacoco {
+    toolVersion = "0.8.8"
+}
+
+test {
+    finalizedBy jacocoTestReport
+}
+
+jacocoTestReport {
+    dependsOn test
+    reports {
+        xml.required = true
+        html.required = true
+        csv.required = false
+    }
+
+    afterEvaluate {
+        classDirectories.setFrom(files(classDirectories.files.collect {
+            fileTree(dir: it, exclude: [
+                '**/example/**',  // 排除示例代码
+                '**/test/**'      // 排除测试代码
+            ])
+        }))
+    }
+}
+
+jacocoTestCoverageVerification {
+    violationRules {
+        rule {
+            limit {
+                minimum = 0.60  // 最低60%覆盖率
+            }
+        }
+    }
 }

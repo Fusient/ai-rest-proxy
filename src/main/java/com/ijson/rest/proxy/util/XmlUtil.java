@@ -16,10 +16,13 @@ import java.lang.reflect.Field;
 @Slf4j
 public class XmlUtil {
 
+    private static final String PREFIX_CDATA = "<![CDATA[";
+    private static final String SUFFIX_CDATA = "]]>";
+    private static final String DEFAULT_CHARSET = "UTF-8";
 
-    protected static String PREFIX_CDATA = "<![CDATA[";
-    protected static String SUFFIX_CDATA = "]]>";
-
+    // 线程安全的单例XStream实例
+    private static final XStream XSTREAM_WITH_CDATA = initXstream(true);
+    private static final XStream XSTREAM_WITHOUT_CDATA = initXstream(false);
 
     /**
      * 初始化XStream
@@ -40,7 +43,7 @@ public class XmlUtil {
                         @Override
                         public HierarchicalStreamWriter createWriter(Writer out) {
                             return new PrettyPrintWriter(out) {
-                                //修复__问题
+                                // 修复__问题
                                 @Override
                                 public String encodeNode(String name) {
                                     return name;
@@ -56,14 +59,37 @@ public class XmlUtil {
                                 }
                             };
                         }
-                    }
-            );
+                    });
         } else {
             xstream = new XStream(new XppDriver(new XmlFriendlyNameCoder("-_", "_")));
         }
+
+        // 添加安全配置
+        configureXStreamSecurity(xstream);
+
         return xstream;
     }
 
+    /**
+     * 配置XStream安全设置
+     *
+     * @param xstream XStream实例
+     */
+    private static void configureXStreamSecurity(XStream xstream) {
+        // 设置默认安全配置
+        XStream.setupDefaultSecurity(xstream);
+
+        // 允许特定包下的类
+        xstream.allowTypesByWildcard(new String[] {
+                "com.ijson.rest.proxy.example.model.**",
+                "com.ijson.rest.proxy.model.**",
+                "java.lang.**",
+                "java.util.**"
+        });
+
+        // 允许基本类型
+        xstream.allowTypeHierarchy(Object.class);
+    }
 
     /**
      * java 转换成xml
@@ -72,12 +98,8 @@ public class XmlUtil {
      * @return String xml字符串
      */
     public static String toXml(Object obj) {
-        XStream xstream = initXstream(true);// new XStream(new XppDriver(new XmlFriendlyNameCoder("-_", "_")));
-
-        // XStream xstream = new XStream(new XppDriver(new XmlFriendlyReplacer("-_", "_")));
-        // XStream xstream=new XStream(new DomDriver()); //直接用jaxp dom来解释
-        // XStream xstream=new XStream(new DomDriver("utf-8")); //指定编码解析器,直接用jaxp dom来解释
-        ////如果没有这句，xml中的根元素会是<包.类名>；或者说：注解根本就没生效，所以的元素名就是类的属性
+        // 使用线程安全的单例实例
+        XStream xstream = XSTREAM_WITH_CDATA;
 
         Class tClass = obj.getClass();
         Field[] fields = tClass.getDeclaredFields();
@@ -86,35 +108,41 @@ public class XmlUtil {
                 field.setAccessible(true);
                 try {
                     if (field.get(obj) != null) {
-                        field.set(obj, "<![CDATA[" + field.get(obj) + "]]>");
+                        field.set(obj, PREFIX_CDATA + field.get(obj) + SUFFIX_CDATA);
                     }
                 } catch (IllegalAccessException e) {
-                    log.error("CDATA {}", e);
+                    log.error("CDATA处理失败", e);
                 }
             }
         }
 
-        xstream.processAnnotations(obj.getClass()); //通过注解方式的，一定要有这句话
-        return xstream.toXML(obj);
+        // 同步处理注解，确保线程安全
+        synchronized (xstream) {
+            xstream.processAnnotations(obj.getClass());
+            return xstream.toXML(obj);
+        }
     }
-
 
     /**
      * 调用的方法实例：PersonBean person=XmlUtil.toBean(xmlStr, PersonBean.class);
      * 将传入xml文本转换成Java对象
      *
+     * @param <T>    返回对象的类型
      * @param xmlStr 要转成对象的xml
      * @param cls    xml对应的class类
-     * @return T   xml对应的class类的实例对象
+     * @return T xml对应的class类的实例对象
      */
 
-
     public static <T> T toBean(String xmlStr, Class<T> cls) {
-        //注意：不是new Xstream(); 否则报错：java.lang.NoClassDefFoundError: org/xmlpull/v1/XmlPullParserFactory
-        XStream xstream = initXstream(true);
-        xstream.processAnnotations(cls);
-        T obj = (T) xstream.fromXML(xmlStr);
-        return obj;
+        // 使用线程安全的单例实例
+        XStream xstream = XSTREAM_WITH_CDATA;
+
+        // 同步处理注解，确保线程安全
+        synchronized (xstream) {
+            xstream.processAnnotations(cls);
+            T obj = (T) xstream.fromXML(xmlStr);
+            return obj;
+        }
     }
 
     /**
@@ -136,7 +164,7 @@ public class XmlUtil {
                 log.error("error:{}", e);
                 return false;
             }
-        }// end if
+        } // end if
         OutputStream ous = null;
         try {
             ous = new FileOutputStream(file);
@@ -157,36 +185,33 @@ public class XmlUtil {
         return true;
     }
 
-
     /**
-     *  从xml文件读取报文
-     * @param absPath 绝对路径
+     * 从xml文件读取报文
+     * 
+     * @param absPath  绝对路径
      * @param fileName 文件名
-     * @param cls 类
-     * @param <T> 对象
+     * @param cls      类
+     * @param <T>      对象
      * @return 转换后的对象
-     * @throws Exception
+     * @throws Exception 当文件不存在或XML解析失败时抛出异常
      */
     public static <T> T toBeanFromFile(String absPath, String fileName, Class<T> cls) throws Exception {
         String filePath = absPath + fileName;
-        InputStream ins = null;
-        try {
-            ins = new FileInputStream(new File(filePath));
-        } catch (Exception e) {
-            throw new Exception("读{" + filePath + "}文件失败！", e);
-        }
 
-        XStream xstream = initXstream(true);
-        xstream.processAnnotations(cls);
-        T obj = null;
-        try {
-            obj = (T) xstream.fromXML(ins);
+        // 使用try-with-resources确保资源正确关闭
+        try (InputStream ins = new FileInputStream(new File(filePath))) {
+            XStream xstream = XSTREAM_WITH_CDATA;
+
+            // 同步处理注解，确保线程安全
+            synchronized (xstream) {
+                xstream.processAnnotations(cls);
+                return (T) xstream.fromXML(ins);
+            }
+        } catch (FileNotFoundException e) {
+            throw new Exception("文件不存在: " + filePath, e);
         } catch (Exception e) {
-            // TODO Auto-generated catch block
-            throw new Exception("解析{" + filePath + "}文件失败！", e);
+            throw new Exception("解析XML文件失败: " + filePath, e);
         }
-        ins.close();
-        return obj;
     }
 
 }
