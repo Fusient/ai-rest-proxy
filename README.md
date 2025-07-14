@@ -1,9 +1,11 @@
-# ai-rest-proxy
+# AI REST Proxy
 
 [![Build Status](https://img.shields.io/badge/build-passing-brightgreen.svg)](https://github.com/Fusient/ai-rest-proxy)
 [![License](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](http://www.apache.org/licenses/LICENSE-2.0.txt)
 [![Java Version](https://img.shields.io/badge/java-1.8+-orange.svg)](https://www.oracle.com/java/)
 [![Gradle](https://img.shields.io/badge/gradle-7.6-green.svg)](https://gradle.org/)
+
+**Language**: [English](README_EN.md) | 中文
 
 🚀 **AI REST Proxy** 是一个高性能、安全的 Java REST 客户端代理库，专为现代微服务架构设计。通过注解驱动的方式，让 REST API 调用变得简单而优雅，支持多种 HTTP 方法和数据格式的轻量级 Java 库。
 
