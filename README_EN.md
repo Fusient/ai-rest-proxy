@@ -7,8 +7,6 @@
 
 **Language**: English | [中文](README.md)
 
-**Language**: English | [中文](README.md)
-
 🚀 **AI REST Proxy** is a high-performance, secure Java REST client proxy library designed for modern microservice architectures. It makes REST API calls simple and elegant through annotation-driven approach, supporting multiple HTTP methods and data formats.
 
 ## ✨ Core Features
