@@ -1,0 +1,203 @@
+plugins {
+    id 'java-library'
+    id 'maven-publish'
+    id 'signing'
+}
+
+group = 'com.ijson'
+archivesBaseName = 'ai-rest-proxy'
+version = '1.0.0-SNAPSHOT'
+
+java {
+    sourceCompatibility = JavaVersion.VERSION_1_8
+    targetCompatibility = JavaVersion.VERSION_1_8
+    withSourcesJar()
+    withJavadocJar()
+}
+
+repositories {
+    mavenCentral()
+    mavenLocal()
+}
+
+ext {
+    zkVersion = '1.0.0-SNAPSHOT'
+    springVersion = '5.3.21'
+    lombokVersion = '1.18.24'
+    logbackVersion = '1.2.11'
+    slf4jVersion = '1.7.36'
+    guavaVersion = '31.1-jre'
+    gsonVersion = '2.9.0'
+    commonsIoVersion = '2.11.0'
+    commonsCollectionsVersion = '3.2.2'
+    httpclientVersion = '4.5.13'
+    xstreamVersion = '1.4.19'
+    junitVersion = '4.13.2'
+    fastjsonVersion = '1.2.83'
+}
+
+dependencies {
+    // 主要依赖
+    compileOnly "org.projectlombok:lombok:${lombokVersion}"
+    annotationProcessor "org.projectlombok:lombok:${lombokVersion}"
+
+    testCompileOnly "org.projectlombok:lombok:${lombokVersion}"
+    testAnnotationProcessor "org.projectlombok:lombok:${lombokVersion}"
+    
+    implementation("ch.qos.logback:logback-classic:${logbackVersion}") {
+        exclude group: 'org.slf4j', module: 'slf4j-api'
+    }
+    implementation "org.slf4j:slf4j-api:${slf4jVersion}"
+    
+    implementation "com.google.guava:guava:${guavaVersion}"
+    implementation "com.google.code.gson:gson:${gsonVersion}"
+    implementation "commons-io:commons-io:${commonsIoVersion}"
+    implementation "commons-collections:commons-collections:${commonsCollectionsVersion}"
+    implementation "org.apache.httpcomponents:httpclient:${httpclientVersion}"
+    
+    implementation "org.springframework:spring-beans:${springVersion}"
+    implementation "org.springframework:spring-context:${springVersion}"
+    
+    // 注意 1.4.14-jdk7 反射存在问题,故使用1.4.19
+    implementation "com.thoughtworks.xstream:xstream:${xstreamVersion}"
+    
+    // 自定义依赖
+    implementation "com.ijson.ai:iconfig-zkclient:${zkVersion}"
+    
+    // 测试依赖
+    testImplementation "org.springframework:spring-test:${springVersion}"
+    testImplementation "junit:junit:${junitVersion}"
+    testImplementation "com.alibaba:fastjson:${fastjsonVersion}"
+}
+
+// 资源配置
+sourceSets {
+    main {
+        resources {
+            srcDirs = ['src/main/resources', 'src/main/java']
+            include '**/*.ext'
+        }
+    }
+}
+
+// 编译配置
+compileJava {
+    options.encoding = 'UTF-8'
+}
+
+compileTestJava {
+    options.encoding = 'UTF-8'
+}
+
+// 测试配置
+test {
+    useJUnit()
+    testLogging {
+        events "passed", "skipped", "failed"
+    }
+    // 跳过测试，对应Maven配置中的skip=true
+    enabled = false
+}
+
+// 暂时禁用测试编译，直到Lombok问题解决
+compileTestJava {
+    enabled = false
+}
+
+// JAR配置
+jar {
+    exclude 'log4j.xml'
+    
+    manifest {
+        attributes(
+            'Implementation-Title': project.name,
+            'Implementation-Version': project.version,
+            'Implementation-Vendor': 'ijson.com'
+        )
+    }
+}
+
+// Javadoc配置
+javadoc {
+    options.encoding = 'UTF-8'
+    options.charSet = 'UTF-8'
+    options.author = true
+    options.version = true
+    options.use = true
+    options.windowTitle = 'ai-rest-proxy'
+    options.docTitle = 'ai-rest-proxy'
+    options.locale = 'en_US'
+    
+    if(JavaVersion.current().isJava9Compatible()) {
+        options.addBooleanOption('html5', true)
+    }
+}
+
+// 发布配置
+publishing {
+    publications {
+        maven(MavenPublication) {
+            from components.java
+            
+            pom {
+                name = 'ai-rest-proxy'
+                description = 'restful helper'
+                url = 'https://www.4klike.com;https://www.ijson.com;https://www.ijson.net;'
+                
+                licenses {
+                    license {
+                        name = 'The Apache Software License, Version 2.0'
+                        url = 'http://www.apache.org/licenses/LICENSE-2.0.txt'
+                        distribution = 'repo'
+                    }
+                }
+                
+                developers {
+                    developer {
+                        name = 'cuiyongxu'
+                        email = 'cuiyongxu@gmail.com'
+                        url = 'https://www.ijson.net'
+                    }
+                }
+                
+                scm {
+                    url = 'https://github.com/Fusient/ai-rest-proxy'
+                    connection = 'scm:git:https://github.com/Fusient/ai-rest-proxy.git'
+                    developerConnection = 'scm:git:https://github.com/Fusient/ai-rest-proxy.git'
+                    tag = 'HEAD'
+                }
+            }
+        }
+    }
+    
+    repositories {
+        maven {
+            name = "OSSRH"
+            def releasesRepoUrl = "https://oss.sonatype.org/service/local/staging/deploy/maven2/"
+            def snapshotsRepoUrl = "https://oss.sonatype.org/content/repositories/snapshots/"
+            url = version.endsWith('SNAPSHOT') ? snapshotsRepoUrl : releasesRepoUrl
+            credentials {
+                username = project.findProperty("ossrhUsername") ?: ""
+                password = project.findProperty("ossrhPassword") ?: ""
+            }
+        }
+    }
+}
+
+// GPG签名配置 - 只在有签名配置时启用
+signing {
+    required { gradle.taskGraph.hasTask("publish") && !version.endsWith("SNAPSHOT") }
+    sign publishing.publications.maven
+}
+
+// 发布任务依赖
+tasks.withType(PublishToMavenRepository) {
+    dependsOn test
+}
+
+// 自定义任务
+task release {
+    group = 'publishing'
+    description = 'Publishes the project to Maven Central'
+    dependsOn 'publishMavenPublicationToOSSRHRepository'
+}
